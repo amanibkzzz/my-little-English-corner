@@ -34,6 +34,11 @@ button.secondary{background:#eee5ed;color:#403444}
 <button class="secondary" id="fastBtn">Fast (1.25×)</button>
 </div>
 <div class="status" id="status" role="status">Ready. Load a video to begin.</div>
+<div class="panel" style="margin-top:18px">
+<h2 style="font-size:1.2rem;margin-top:0">📝 English transcript</h2>
+<div class="status" id="transcriptStatus" role="status">The transcript will appear here after you load a video.</div>
+<div id="transcriptLines" style="margin-top:12px;display:grid;gap:8px"></div>
+</div>
 <p class="small">Tip: press CC in the YouTube player if captions do not appear automatically. Captions depend on the video and YouTube's availability settings.</p>
 
 <div class="panel" style="margin-top:18px">
@@ -70,6 +75,7 @@ function loadVideo(){
   const frame=document.getElementById("player");
   frame.innerHTML="";
   const iframe=document.createElement("iframe");
+  iframe.id="yt-player";
   iframe.title="YouTube video player";
   iframe.allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
   iframe.allowFullscreen=true;
@@ -78,6 +84,7 @@ function loadVideo(){
   frame.appendChild(iframe);
   setStatus("Video loaded. If captions are available, press CC in the player.");
  }
+ fetchTranscript(id);
 }
 document.getElementById("loadBtn").addEventListener("click",loadVideo);
 document.getElementById("videoUrl").addEventListener("keydown",e=>{if(e.key==="Enter")loadVideo();});
@@ -89,6 +96,56 @@ function rate(n){
 document.getElementById("slowBtn").onclick=()=>rate(.75);
 document.getElementById("normalBtn").onclick=()=>rate(1);
 document.getElementById("fastBtn").onclick=()=>rate(1.25);
+
+
+function formatTime(seconds){
+ const s=Math.max(0,Math.floor(seconds||0));
+ return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
+}
+function seekVideo(seconds){
+ const frame=document.querySelector("#player iframe");
+ if(frame && frame.contentWindow){
+  frame.contentWindow.postMessage(JSON.stringify({event:"command",func:"seekTo",args:[seconds,true]}),"https://www.youtube.com");
+ }
+}
+async function fetchTranscript(videoId){
+ const status=document.getElementById("transcriptStatus");
+ const lines=document.getElementById("transcriptLines");
+ status.textContent="Fetching transcript..."; lines.innerHTML="";
+ try{
+  const cacheKey="transcript_"+videoId;
+  let data=null;
+  try{ data=JSON.parse(sessionStorage.getItem(cacheKey)||"null"); }catch(e){}
+  if(!data){
+   const url="https://api.freetranscriptapi.com/v1/transcript?video_url="+encodeURIComponent(videoId);
+   const response=await fetch(url);
+   if(!response.ok) throw new Error("Transcript service returned HTTP "+response.status);
+   data=await response.json();
+   if(data.error) throw new Error(data.error.message||"Transcript unavailable.");
+   sessionStorage.setItem(cacheKey,JSON.stringify(data));
+  }
+  if(!Array.isArray(data.transcript)||data.transcript.length===0){
+   status.textContent="No transcript was returned for this video.";
+   return;
+  }
+  status.textContent="Transcript loaded: "+data.transcript.length+" caption segments. Tap a line to jump to that moment.";
+  data.transcript.forEach((segment)=>{
+   const button=document.createElement("button");
+   button.className="secondary";
+   button.style.cssText="display:flex;gap:10px;text-align:left;align-items:flex-start;width:100%;white-space:normal;background:#fff;border:1px solid #f0dce9;color:#403444";
+   const time=document.createElement("span");
+   time.textContent=formatTime(segment.start);
+   time.style.cssText="font-weight:700;color:#c94f91;min-width:42px";
+   const text=document.createElement("span");
+   text.textContent=segment.text;
+   button.append(time,text);
+   button.onclick=()=>seekVideo(Number(segment.start)||0);
+   lines.appendChild(button);
+  });
+ }catch(error){
+  status.textContent="Transcript could not be loaded from this browser. This may be a service, network, or browser-access issue. "+(error.message||"");
+ }
+}
 
 document.getElementById("translateBtn").addEventListener("click", async () => {
  const text = document.getElementById("englishText").value.trim();
