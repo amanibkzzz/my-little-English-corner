@@ -34,10 +34,12 @@ button.secondary{background:#eee5ed;color:#403444}
 <button class="secondary" id="fastBtn">Fast (1.25×)</button>
 </div>
 <div class="status" id="status" role="status">Ready. Load a video to begin.</div>
-<div class="panel" style="margin-top:18px">
-<h2 style="font-size:1.2rem;margin-top:0">📝 English transcript</h2>
-<div class="status" id="transcriptStatus" role="status">The transcript will appear here after you load a video.</div>
-<div id="transcriptLines" style="margin-top:12px;display:grid;gap:8px"></div>
+<div class="panel" style="margin-top:18px;text-align:center">
+<h2 style="font-size:1.2rem;margin-top:0">✨ Live subtitles</h2>
+<div class="status" id="transcriptStatus" role="status">Load a video to see the sentence appear as it is spoken.</div>
+<div id="liveEnglish" style="font-size:1.2rem;font-weight:700;line-height:1.7;margin-top:12px;min-height:54px"></div>
+<div id="liveArabic" dir="rtl" lang="ar" style="font-size:1.1rem;line-height:1.7;color:#9b527e;min-height:42px">Arabic translation will be added in the next step.</div>
+<button class="secondary" id="replaySentence" disabled>↻ Replay sentence</button>
 </div>
 <p class="small">Tip: press CC in the YouTube player if captions do not appear automatically. Captions depend on the video and YouTube's availability settings.</p>
 
@@ -53,6 +55,9 @@ button.secondary{background:#eee5ed;color:#403444}
 </div>
 <script>
 let player;
+let transcriptSegments=[];
+let activeSegment=-1;
+let apiReady=false;
 function getId(raw){
  try{
   const u=new URL(raw);
@@ -68,30 +73,35 @@ function setStatus(t){document.getElementById("status").textContent=t;}
 function loadVideo(){
  const id=getId(document.getElementById("videoUrl").value.trim());
  if(!id){setStatus("Please enter a valid YouTube video link.");return;}
- if(player && player.loadVideoById){
-  player.loadVideoById({videoId:id});
-  setStatus("Video loaded. If captions are available, press CC in the player.");
+ if(apiReady){
+  if(player && player.loadVideoById) player.loadVideoById(id);
+  else createPlayer(id);
  }else{
-  const frame=document.getElementById("player");
-  frame.innerHTML="";
-  const iframe=document.createElement("iframe");
-  iframe.id="yt-player";
-  iframe.title="YouTube video player";
-  iframe.allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
-  iframe.allowFullscreen=true;
-  iframe.referrerPolicy="strict-origin-when-cross-origin";
-  iframe.src="https://www.youtube.com/embed/"+encodeURIComponent(id)+"?enablejsapi=1&cc_load_policy=1&cc_lang_pref=en&playsinline=1";
-  frame.appendChild(iframe);
-  setStatus("Video loaded. If captions are available, press CC in the player.");
+  window.pendingVideoId=id;
+  setStatus("Loading YouTube player...");
  }
  fetchTranscript(id);
 }
+function createPlayer(id){
+ player=new YT.Player("player",{
+  videoId:id,
+  playerVars:{playsinline:1,cc_load_policy:1,cc_lang_pref:"en"},
+  events:{onReady:()=>setStatus("Video ready. Play to see synchronized subtitles."),onError:()=>setStatus("YouTube could not load this video in the player.")}
+ });
+}
+window.onYouTubeIframeAPIReady=function(){
+ apiReady=true;
+ if(window.pendingVideoId) createPlayer(window.pendingVideoId);
+};
+(function loadYouTubeAPI(){
+ if(!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')){
+  const s=document.createElement("script");s.src="https://www.youtube.com/iframe_api";document.head.appendChild(s);
+ }
+})();
 document.getElementById("loadBtn").addEventListener("click",loadVideo);
 document.getElementById("videoUrl").addEventListener("keydown",e=>{if(e.key==="Enter")loadVideo();});
 function rate(n){
- const f=document.querySelector("#player iframe");
- if(f && f.contentWindow) f.contentWindow.postMessage(JSON.stringify({event:"command",func:"setPlaybackRate",args:[n]}),"https://www.youtube.com");
- setStatus("Requested playback speed: "+n+"×. YouTube applies only supported speeds.");
+ if(player && player.setPlaybackRate) player.setPlaybackRate(n); setStatus("Playback speed: "+n+"×.");
 }
 document.getElementById("slowBtn").onclick=()=>rate(.75);
 document.getElementById("normalBtn").onclick=()=>rate(1);
@@ -110,42 +120,47 @@ function seekVideo(seconds){
 }
 async function fetchTranscript(videoId){
  const status=document.getElementById("transcriptStatus");
- const lines=document.getElementById("transcriptLines");
- status.textContent="Fetching transcript..."; lines.innerHTML="";
+ status.textContent="Fetching transcript...";transcriptSegments=[];activeSegment=-1;
+ document.getElementById("liveEnglish").textContent="";
+ document.getElementById("liveArabic").textContent="Arabic translation will be added in the next step.";
  try{
   const cacheKey="transcript_"+videoId;
   let data=null;
-  try{ data=JSON.parse(sessionStorage.getItem(cacheKey)||"null"); }catch(e){}
+  try{data=JSON.parse(sessionStorage.getItem(cacheKey)||"null");}catch(e){}
   if(!data){
    const url="https://api.freetranscriptapi.com/v1/transcript?video_url="+encodeURIComponent(videoId);
    const response=await fetch(url);
-   if(!response.ok) throw new Error("Transcript service returned HTTP "+response.status);
+   if(!response.ok)throw new Error("Transcript service returned HTTP "+response.status);
    data=await response.json();
-   if(data.error) throw new Error(data.error.message||"Transcript unavailable.");
+   if(data.error)throw new Error(data.error.message||"Transcript unavailable.");
    sessionStorage.setItem(cacheKey,JSON.stringify(data));
   }
-  if(!Array.isArray(data.transcript)||data.transcript.length===0){
-   status.textContent="No transcript was returned for this video.";
-   return;
-  }
-  status.textContent="Transcript loaded: "+data.transcript.length+" caption segments. Tap a line to jump to that moment.";
-  data.transcript.forEach((segment)=>{
-   const button=document.createElement("button");
-   button.className="secondary";
-   button.style.cssText="display:flex;gap:10px;text-align:left;align-items:flex-start;width:100%;white-space:normal;background:#fff;border:1px solid #f0dce9;color:#403444";
-   const time=document.createElement("span");
-   time.textContent=formatTime(segment.start);
-   time.style.cssText="font-weight:700;color:#c94f91;min-width:42px";
-   const text=document.createElement("span");
-   text.textContent=segment.text;
-   button.append(time,text);
-   button.onclick=()=>seekVideo(Number(segment.start)||0);
-   lines.appendChild(button);
-  });
- }catch(error){
-  status.textContent="Transcript could not be loaded from this browser. This may be a service, network, or browser-access issue. "+(error.message||"");
+  if(!Array.isArray(data.transcript)||data.transcript.length===0){status.textContent="No transcript was returned for this video.";return;}
+  transcriptSegments=data.transcript;
+  status.textContent="Transcript ready. Play the video to follow each sentence.";
+ }catch(error){status.textContent="Transcript could not be loaded. "+(error.message||"");}
+}
+function updateLiveCaption(){
+ if(!player||!player.getCurrentTime||!transcriptSegments.length)return;
+ const now=player.getCurrentTime();
+ let idx=-1;
+ for(let i=0;i<transcriptSegments.length;i++){
+  if(Number(transcriptSegments[i].start)<=now)idx=i;else break;
+ }
+ if(idx!==activeSegment){
+  activeSegment=idx;
+  const seg=idx>=0?transcriptSegments[idx]:null;
+  document.getElementById("liveEnglish").textContent=seg?seg.text:"";
+  const replay=document.getElementById("replaySentence");
+  replay.disabled=!seg;
  }
 }
+setInterval(updateLiveCaption,250);
+document.getElementById("replaySentence").addEventListener("click",()=>{
+ if(activeSegment>=0&&transcriptSegments[activeSegment]&&player&&player.seekTo){
+  player.seekTo(Number(transcriptSegments[activeSegment].start)||0,true);player.playVideo();
+ }
+});
 
 document.getElementById("translateBtn").addEventListener("click", async () => {
  const text = document.getElementById("englishText").value.trim();
