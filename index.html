@@ -139,6 +139,7 @@ async function fetchTranscript(videoId){
   if(!Array.isArray(data.transcript)||data.transcript.length===0){status.textContent="No transcript was returned for this video.";return;}
   transcriptSegments=data.transcript;
   sentenceSegments=buildSentences(transcriptSegments);
+  prefetchNearbyTranslations(0);
   status.textContent="Transcript ready. Play the video to see sentences change naturally.";
  }catch(error){status.textContent="Transcript could not be loaded. "+(error.message||"");}
 }
@@ -185,7 +186,14 @@ function buildSentences(segments){
  });
  return sentences;
 }
+const translationPromises=new Map();
 async function translateLiveSentence(text){
+ if(translationPromises.has(text))return translationPromises.get(text);
+ const promise=translateSentenceRequest(text);
+ translationPromises.set(text,promise);
+ return promise;
+}
+async function translateSentenceRequest(text){
  const cacheKey="arabic_"+text;
  try{const saved=sessionStorage.getItem(cacheKey);if(saved)return saved;}catch(e){}
  try{
@@ -199,12 +207,21 @@ async function translateLiveSentence(text){
  }catch(e){}
  return "تعذّرت الترجمة مؤقتًا.";
 }
+function prefetchNearbyTranslations(index){
+ if(index<0)return;
+ // Prepare the current and next sentence so Arabic is more likely to be ready before it is displayed.
+ for(let i=index;i<Math.min(sentenceSegments.length,index+2);i++){
+  const text=sentenceSegments[i]?.text;
+  if(text)translateLiveSentence(text);
+ }
+}
 async function updateLiveCaption(){
  if(!player||!player.getCurrentTime||!sentenceSegments.length)return;
  const now=player.getCurrentTime();
  const idx=sentenceSegments.findIndex(s=>now>=s.start&&now<s.end);
  if(idx!==activeSegment){
   activeSegment=idx;
+  if(idx>=0)prefetchNearbyTranslations(idx);
   const box=document.getElementById("liveEnglish");
   const arabic=document.getElementById("liveArabic");
   box.style.opacity="0";
