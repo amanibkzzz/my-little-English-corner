@@ -144,25 +144,44 @@ async function fetchTranscript(videoId){
 }
 function buildSentences(segments){
  const sentences=[];
- let current={start:Number(segments[0]?.start)||0,text:""};
+ let current={start:0,text:""};
+ const MAX_WORDS=18;
+ function flush(endTime){
+  const text=current.text.trim();
+  if(!text)return;
+  current.end=Math.max(Number(endTime)||current.start+1,current.start+0.5);
+  sentences.push(current);
+  current={start:current.end,text:""};
+ }
  for(const seg of segments){
   const phrase=(seg.text||"").trim();
   if(!phrase)continue;
-  if(!current.text)current.start=Number(seg.start)||0;
-  current.text+=(current.text?" ":"")+phrase;
-  if(/[.!?]["'”’)]*$/.test(phrase)){
-   current.end=(Number(seg.start)||0)+(Number(seg.duration)||0);
-   sentences.push(current);current={start:current.end||0,text:""};
+  const segStart=Number(seg.start)||0;
+  const segEnd=segStart+(Number(seg.duration)||1);
+  if(!current.text)current.start=segStart;
+  // Split punctuation-delimited sentences, but also break long unpunctuated speech.
+  const pieces=phrase.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[phrase];
+  for(const piece of pieces){
+   const words=piece.trim().split(/\s+/).filter(Boolean);
+   for(let i=0;i<words.length;i+=MAX_WORDS){
+    const part=words.slice(i,i+MAX_WORDS).join(" ");
+    current.text+=(current.text?" ":"")+part;
+    const isSentenceEnd=/[.!?]["'”’)]*$/.test(part);
+    const isChunkEnd=i+MAX_WORDS>=words.length;
+    if(isSentenceEnd||current.text.split(/\s+/).length>=MAX_WORDS){
+     flush(segEnd);
+    }
+   }
   }
  }
  if(current.text){
-  current.end=Number(segments[segments.length-1]?.start||0)+Number(segments[segments.length-1]?.duration||0);
-  sentences.push(current);
+  const last=segments[segments.length-1];
+  flush((Number(last?.start)||0)+(Number(last?.duration)||1));
  }
- // Ensure each sentence has a useful end time; use the next sentence's start if timestamps overlap.
+ // Keep intervals non-zero and ordered; if the API gives imperfect times, use a small fallback.
  sentences.forEach((s,i)=>{
-  if(!s.end||s.end<=s.start)s.end=sentences[i+1]?.start||s.start+2;
-  if(sentences[i+1]&&s.end>sentences[i+1].start)s.end=sentences[i+1].start;
+  if(!s.end||s.end<=s.start)s.end=s.start+2;
+  if(sentences[i+1]&&s.end>sentences[i+1].start&&sentences[i+1].start>s.start)s.end=sentences[i+1].start;
  });
  return sentences;
 }
