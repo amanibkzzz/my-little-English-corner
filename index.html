@@ -37,7 +37,7 @@ button.secondary{background:#eee5ed;color:#403444}
 <div class="panel" style="margin-top:18px;text-align:center">
 <h2 style="font-size:1.2rem;margin-top:0">✨ Live subtitles</h2>
 <div class="status" id="transcriptStatus" role="status">Load a video to see the sentence appear as it is spoken.</div>
-<div id="liveEnglish" style="font-size:1.2rem;font-weight:700;line-height:1.7;margin-top:12px;min-height:54px"></div>
+<div id="liveEnglish" style="font-size:1.2rem;font-weight:700;line-height:1.7;margin-top:12px;min-height:54px;transition:opacity .18s ease"></div>
 <div id="liveArabic" dir="rtl" lang="ar" style="font-size:1.1rem;line-height:1.7;color:#9b527e;min-height:42px">Arabic translation will be added in the next step.</div>
 <button class="secondary" id="replaySentence" disabled>↻ Replay sentence</button>
 </div>
@@ -56,6 +56,7 @@ button.secondary{background:#eee5ed;color:#403444}
 <script>
 let player;
 let transcriptSegments=[];
+let sentenceSegments=[];
 let activeSegment=-1;
 let apiReady=false;
 function getId(raw){
@@ -120,7 +121,7 @@ function seekVideo(seconds){
 }
 async function fetchTranscript(videoId){
  const status=document.getElementById("transcriptStatus");
- status.textContent="Fetching transcript...";transcriptSegments=[];activeSegment=-1;
+ status.textContent="Fetching transcript...";transcriptSegments=[];sentenceSegments=[];activeSegment=-1;
  document.getElementById("liveEnglish").textContent="";
  document.getElementById("liveArabic").textContent="Arabic translation will be added in the next step.";
  try{
@@ -137,28 +138,54 @@ async function fetchTranscript(videoId){
   }
   if(!Array.isArray(data.transcript)||data.transcript.length===0){status.textContent="No transcript was returned for this video.";return;}
   transcriptSegments=data.transcript;
-  status.textContent="Transcript ready. Play the video to follow each sentence.";
+  sentenceSegments=buildSentences(transcriptSegments);
+  status.textContent="Transcript ready. Play the video to see sentences change naturally.";
  }catch(error){status.textContent="Transcript could not be loaded. "+(error.message||"");}
 }
-function updateLiveCaption(){
- if(!player||!player.getCurrentTime||!transcriptSegments.length)return;
- const now=player.getCurrentTime();
- let idx=-1;
- for(let i=0;i<transcriptSegments.length;i++){
-  if(Number(transcriptSegments[i].start)<=now)idx=i;else break;
+function buildSentences(segments){
+ const sentences=[];
+ let current={start:Number(segments[0]?.start)||0,text:""};
+ for(const seg of segments){
+  const phrase=(seg.text||"").trim();
+  if(!phrase)continue;
+  if(!current.text)current.start=Number(seg.start)||0;
+  current.text+=(current.text?" ":"")+phrase;
+  if(/[.!?]["'”’)]*$/.test(phrase)){
+   current.end=(Number(seg.start)||0)+(Number(seg.duration)||0);
+   sentences.push(current);current={start:current.end||0,text:""};
+  }
  }
+ if(current.text){
+  current.end=Number(segments[segments.length-1]?.start||0)+Number(segments[segments.length-1]?.duration||0);
+  sentences.push(current);
+ }
+ // Ensure each sentence has a useful end time; use the next sentence's start if timestamps overlap.
+ sentences.forEach((s,i)=>{
+  if(!s.end||s.end<=s.start)s.end=sentences[i+1]?.start||s.start+2;
+  if(sentences[i+1]&&s.end>sentences[i+1].start)s.end=sentences[i+1].start;
+ });
+ return sentences;
+}
+function updateLiveCaption(){
+ if(!player||!player.getCurrentTime||!sentenceSegments.length)return;
+ const now=player.getCurrentTime();
+ const idx=sentenceSegments.findIndex(s=>now>=s.start&&now<s.end);
  if(idx!==activeSegment){
   activeSegment=idx;
-  const seg=idx>=0?transcriptSegments[idx]:null;
-  document.getElementById("liveEnglish").textContent=seg?seg.text:"";
+  const box=document.getElementById("liveEnglish");
+  box.style.opacity="0";
+  setTimeout(()=>{
+   box.textContent=idx>=0?sentenceSegments[idx].text:"";
+   box.style.opacity="1";
+  },120);
   const replay=document.getElementById("replaySentence");
-  replay.disabled=!seg;
+  replay.disabled=idx<0;
  }
 }
 setInterval(updateLiveCaption,250);
 document.getElementById("replaySentence").addEventListener("click",()=>{
- if(activeSegment>=0&&transcriptSegments[activeSegment]&&player&&player.seekTo){
-  player.seekTo(Number(transcriptSegments[activeSegment].start)||0,true);player.playVideo();
+ if(activeSegment>=0&&sentenceSegments[activeSegment]&&player&&player.seekTo){
+  player.seekTo(Number(sentenceSegments[activeSegment].start)||0,true);player.playVideo();
  }
 });
 
