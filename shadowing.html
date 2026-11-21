@@ -65,13 +65,23 @@ let apiReady=false;
 function getId(raw){
  try{
   const u=new URL(raw);
-  if(u.hostname==="youtu.be") return u.pathname.slice(1).split("/")[0];
-  if(u.hostname.endsWith("youtube.com")){
-   if(u.pathname==="/watch") return u.searchParams.get("v");
-   const m=u.pathname.match(/^\/(embed|shorts)\/([^/?]+)/); if(m) return m[2];
+  const host=u.hostname.toLowerCase();
+  const allowedHosts=["youtube.com","www.youtube.com","m.youtube.com","youtu.be"];
+  if(u.protocol!=="https:"||!allowedHosts.includes(host)||u.username||u.password||u.port)return null;
+  let id=null;
+  if(host==="youtu.be"){
+   const parts=u.pathname.split("/").filter(Boolean);
+   if(parts.length===1)id=parts[0];
+  }else if(u.pathname==="/watch"){
+   id=u.searchParams.get("v");
+  }else{
+   const match=u.pathname.match(/^\/(embed|shorts|live)\/([^/]+)\/?$/);
+   if(match)id=match[2];
   }
- }catch(e){}
- return null;
+  return id&&/^[A-Za-z0-9_-]{11}$/.test(id)?id:null;
+ }catch(e){
+  return null;
+ }
 }
 function setStatus(t){document.getElementById("status").textContent=t;}
 function loadVideo(){
