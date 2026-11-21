@@ -89,7 +89,7 @@ function createPlayer(id){
  player=new YT.Player("player",{
   videoId:id,
   playerVars:{playsinline:1,cc_load_policy:1,cc_lang_pref:"en"},
-  events:{onReady:()=>setStatus("Video ready. Play to see synchronized subtitles."),onError:()=>setStatus("YouTube could not load this video in the player.")}
+  events:{onReady:()=>setStatus("Video ready. Play to see synchronized subtitles."),onStateChange:onPlayerStateChange,onError:()=>setStatus("YouTube could not load this video in the player.")}
  });
 }
 window.onYouTubeIframeAPIReady=function(){
@@ -232,7 +232,18 @@ async function updateLiveCaption(){
   if(idx>=0){arabic.textContent="جارٍ ترجمة الجملة...";const translation=await translateLiveSentence(sentenceSegments[idx].text);if(idx===activeSegment)arabic.textContent=translation;}else arabic.textContent="";
  }
 }
-setInterval(updateLiveCaption,250);
+let captionTimer=null;
+function startCaptionPolling(){
+ if(captionTimer!==null)return;
+ captionTimer=setInterval(updateLiveCaption,250);
+}
+function stopCaptionPolling(){
+ if(captionTimer!==null){clearInterval(captionTimer);captionTimer=null;}
+}
+function onPlayerStateChange(event){
+ if(window.YT&&event.data===YT.PlayerState.PLAYING)startCaptionPolling();
+ else stopCaptionPolling();
+}
 document.getElementById("replaySentence").addEventListener("click",()=>{
  if(activeSegment>=0&&sentenceSegments[activeSegment]&&player&&player.seekTo){
   player.seekTo(Number(sentenceSegments[activeSegment].start)||0,true);player.playVideo();
