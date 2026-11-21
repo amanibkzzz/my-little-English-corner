@@ -36,7 +36,7 @@
     const completed=data.lastCompletedDate===localDate();
     box.innerHTML="";
     const mascot=document.createElement("img");
-    mascot.src="1000566655-removebg-preview.png";
+    mascot.src="https://raw.githubusercontent.com/amanibkzzz/youtube-caption-test/development/1000566655-removebg-preview.png";
     mascot.alt="Misho";
     mascot.style.cssText="display:block;width:88px;height:auto;max-height:100px;object-fit:contain;margin:0 auto 6px";
     const message=document.createElement("div");
