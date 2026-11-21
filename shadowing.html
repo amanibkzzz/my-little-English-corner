@@ -55,6 +55,7 @@ a.home{display:inline-block;margin-bottom:12px;padding:9px 14px;border-radius:99
 </div>
 
 </div>
+<script src="streak.js"></script>
 <script>
 let player;
 let transcriptSegments=[];
@@ -243,6 +244,7 @@ function stopCaptionPolling(){
 function onPlayerStateChange(event){
  if(window.YT&&event.data===YT.PlayerState.PLAYING)startCaptionPolling();
  else stopCaptionPolling();
+ if(window.YT&&event.data===YT.PlayerState.ENDED&&window.recordExerciseCompletion)window.recordExerciseCompletion();
 }
 document.getElementById("replaySentence").addEventListener("click",()=>{
  if(activeSegment>=0&&sentenceSegments[activeSegment]&&player&&player.seekTo){
