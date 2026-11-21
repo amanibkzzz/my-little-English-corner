@@ -34,7 +34,15 @@
       else document.body.insertBefore(box,document.body.firstChild);
     }
     const completed=data.lastCompletedDate===localDate();
-    box.textContent="🐾 Misho's streak: "+data.currentStreak+" day"+(data.currentStreak===1?"":"s")+(completed?" · Today's exercise complete!":" · Complete any exercise to keep it going.");
+    box.innerHTML="";
+    const mascot=document.createElement("img");
+    mascot.src="1000566655-removebg-preview.png";
+    mascot.alt="Misho";
+    mascot.style.cssText="display:block;width:88px;height:auto;max-height:100px;object-fit:contain;margin:0 auto 6px";
+    const message=document.createElement("div");
+    message.textContent="Misho's streak: "+data.currentStreak+" day"+(data.currentStreak===1?"":"s")+(completed?" · Today's exercise complete!":" · Complete any exercise to keep it going.");
+    box.appendChild(mascot);
+    box.appendChild(message);
   }
   window.recordExerciseCompletion=function(){
     const date=localDate();
