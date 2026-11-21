@@ -28,7 +28,7 @@
       box=document.createElement("div");
       box.id="lec-streak";
       box.setAttribute("role","status");
-      box.style.cssText="margin:12px 0;padding:10px 14px;border:1px solid #f0dce9;border-radius:14px;background:#fff;color:#63445a;font:600 15px system-ui,sans-serif;text-align:center";
+      box.style.cssText="box-sizing:border-box;width:fit-content;max-width:min(100%,320px);margin:12px auto;padding:8px 12px;border:1px solid #f0dce9;border-radius:14px;background:#fff;color:#63445a;font:600 14px system-ui,sans-serif;text-align:center";
       const firstLink=document.querySelector("main>a,body>a");
       if(firstLink&&firstLink.parentNode)firstLink.insertAdjacentElement("afterend",box);
       else document.body.insertBefore(box,document.body.firstChild);
